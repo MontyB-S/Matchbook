@@ -1,3 +1,21 @@
 spring:
   application:
-    name: Matchbook
+    name: matchbook
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/matchbook
+    username: matchbook
+    password: matchbook
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  docker:
+    compose:
+      enabled: false
+
+logging:
+  level:
+    com.monty.matchbook: DEBUG
