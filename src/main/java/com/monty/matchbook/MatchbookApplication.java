@@ -9,5 +9,4 @@ public class MatchbookApplication {
     public static void main(String[] args) {
         SpringApplication.run(MatchbookApplication.class, args);
     }
-
 }
