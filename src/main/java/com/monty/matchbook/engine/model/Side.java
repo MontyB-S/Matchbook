@@ -14,4 +14,11 @@ public enum Side {
     public Side opposite() {
         return opposite;
     }
+
+    public boolean crosses(long incomingPrice, long restingPrice) {
+        if (this == Side.BUY) {
+            return incomingPrice >= restingPrice;
+        }
+        return incomingPrice <= restingPrice;
+    }
 }
