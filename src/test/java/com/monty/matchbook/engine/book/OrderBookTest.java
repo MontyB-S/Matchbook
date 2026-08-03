@@ -1,8 +1,6 @@
 package com.monty.matchbook.engine.book;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.*;
 
 import com.monty.matchbook.engine.model.Order;
 import com.monty.matchbook.support.Orders;

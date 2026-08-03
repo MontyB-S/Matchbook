@@ -36,4 +36,19 @@ final class PriceLevel {
     long totalQuantity() {
         return totalQuantity;
     }
+
+    RestingOrder peekFirst() {
+        return queue.getFirst();
+    }
+
+    void fillFront(long quantity) {
+        RestingOrder front = queue.getFirst();
+
+        front.setRemainingQuantity(front.getRemainingQuantity() - quantity);
+        totalQuantity -= quantity;
+
+        if (front.getRemainingQuantity() == 0) {
+            queue.removeFirst();
+        }
+    }
 }
