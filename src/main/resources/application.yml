@@ -19,3 +19,6 @@ spring:
 logging:
   level:
     com.monty.matchbook: DEBUG
+
+matchbook:
+  tick-size: 0.01
