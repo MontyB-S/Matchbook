@@ -22,8 +22,9 @@ class OrderController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
-    SubmitOrderResponse submit(@Valid @RequestBody SubmitOrderRequest request) {
-        return orderService.submitOrder(request);
+    SubmitOrderResponse submit(
+            @RequestHeader("Idempotency-Key") String idempotencyKey, @Valid @RequestBody SubmitOrderRequest request) {
+        return orderService.submitOrder(idempotencyKey, request);
     }
 
     @DeleteMapping("/{orderId}")
