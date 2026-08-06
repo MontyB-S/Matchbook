@@ -3,89 +3,102 @@ package com.monty.matchbook.gateway;
 import com.monty.matchbook.engine.book.CancelResult;
 import com.monty.matchbook.engine.model.OrderStatus;
 import com.monty.matchbook.engine.model.OrderType;
-import com.monty.matchbook.engine.model.Side;
 import com.monty.matchbook.gateway.api.OrderNotFoundException;
 import com.monty.matchbook.gateway.api.PriceConverter;
 import com.monty.matchbook.gateway.api.dto.CancelOrderResponse;
 import com.monty.matchbook.gateway.api.dto.OrderResponse;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderRequest;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderResponse;
-import java.util.Map;
+import com.monty.matchbook.gateway.domain.OrderEntity;
+import com.monty.matchbook.gateway.domain.OrderRepository;
+import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 @Service
 public class OrderService {
 
     private final PriceConverter priceConverter;
-    private final Map<UUID, StoredOrder> orders = new ConcurrentHashMap<>();
+    private final OrderRepository orderRepository;
 
-    public OrderService(PriceConverter priceConverter) {
+    public OrderService(PriceConverter priceConverter, OrderRepository orderRepository) {
         this.priceConverter = priceConverter;
+        this.orderRepository = orderRepository;
     }
 
-    public SubmitOrderResponse submitOrder(SubmitOrderRequest request) {
-        UUID orderId = UUID.randomUUID();
-        long priceTicks = request.type() == OrderType.LIMIT ? priceConverter.toTicks(request.price()) : 0;
+    public SubmitOrderResponse submitOrder(String idempotencyKey, SubmitOrderRequest request) {
+        Optional<OrderEntity> existing = orderRepository.findByIdempotencyKey(idempotencyKey);
 
-        orders.put(
-                orderId,
-                new StoredOrder(
-                        orderId,
-                        request.clientId(),
-                        request.symbol(),
-                        request.side(),
-                        request.type(),
-                        priceTicks,
-                        request.quantity(),
-                        0,
-                        OrderStatus.NEW));
+        if (existing.isPresent()) {
+            return toSubmitResponse(existing.get());
+        }
 
-        return new SubmitOrderResponse(orderId, OrderStatus.NEW);
+        try {
+            return toSubmitResponse(orderRepository.saveAndFlush(newOrder(idempotencyKey, request)));
+        } catch (DataIntegrityViolationException duplicateKey) {
+
+            return orderRepository
+                    .findByIdempotencyKey(idempotencyKey)
+                    .map(OrderService::toSubmitResponse)
+                    .orElseThrow(() -> duplicateKey);
+        }
     }
 
     public CancelOrderResponse cancelOrder(UUID orderId) {
+        Optional<OrderEntity> order = orderRepository.findById(orderId);
 
-        StoredOrder cancelled =
-                orders.computeIfPresent(orderId, (id, order) -> order.withStatus(OrderStatus.CANCELLED));
+        if (order.isEmpty()) {
+            return new CancelOrderResponse(orderId, CancelResult.NOT_FOUND);
+        }
 
-        return new CancelOrderResponse(orderId, cancelled == null ? CancelResult.NOT_FOUND : CancelResult.CANCELLED);
+        OrderEntity entity = order.get();
+        entity.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(entity);
+
+        return new CancelOrderResponse(orderId, CancelResult.CANCELLED);
     }
 
     public OrderResponse get(UUID orderId) {
-
-        StoredOrder order = orders.get(orderId);
-        if (order == null) {
-            throw new OrderNotFoundException(orderId);
-        }
-
-        StoredOrder storedOrder = orders.get(orderId);
-        return new OrderResponse(
-                storedOrder.id(),
-                storedOrder.clientId(),
-                storedOrder.symbol(),
-                storedOrder.side(),
-                storedOrder.type(),
-                priceConverter.toDecimal(storedOrder.priceTicks()),
-                storedOrder.quantity(),
-                storedOrder.filledQuantity(),
-                storedOrder.status());
+        return orderRepository
+                .findById(orderId)
+                .map(this::toOrderResponse)
+                .orElseThrow(() -> new OrderNotFoundException(orderId));
     }
 
-    private record StoredOrder(
-            UUID id,
-            String clientId,
-            String symbol,
-            Side side,
-            OrderType type,
-            long priceTicks,
-            long quantity,
-            long filledQuantity,
-            OrderStatus status) {
+    private OrderEntity newOrder(String idempotencyKey, SubmitOrderRequest request) {
+        return new OrderEntity(
+                UUID.randomUUID(),
+                idempotencyKey,
+                request.clientId(),
+                request.symbol(),
+                request.side(),
+                request.type(),
+                toPriceTicks(request),
+                request.quantity());
+    }
 
-        StoredOrder withStatus(OrderStatus newStatus) {
-            return new StoredOrder(id, clientId, symbol, side, type, priceTicks, quantity, filledQuantity, newStatus);
-        }
+    private Long toPriceTicks(SubmitOrderRequest request) {
+        return request.type() == OrderType.LIMIT ? priceConverter.toTicks(request.price()) : null;
+    }
+
+    private static SubmitOrderResponse toSubmitResponse(OrderEntity order) {
+        return new SubmitOrderResponse(order.getId(), order.getStatus());
+    }
+
+    private OrderResponse toOrderResponse(OrderEntity order) {
+        BigDecimal price = order.getPriceTicks() == null ? null : priceConverter.toDecimal(order.getPriceTicks());
+
+        return new OrderResponse(
+                order.getId(),
+                order.getClientId(),
+                order.getSymbol(),
+                order.getSide(),
+                order.getType(),
+                price,
+                order.getQuantity(),
+                order.getFilledQuantity(),
+                order.getStatus());
     }
 }

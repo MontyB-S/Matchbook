@@ -1,7 +1,10 @@
 package com.monty.matchbook.gateway.api;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -46,9 +49,11 @@ class OrderControllerTest {
 
         @Test
         void aValidOrderIsAccepted() throws Exception {
-            given(orderService.submitOrder(any())).willReturn(new SubmitOrderResponse(ORDER_ID, OrderStatus.NEW));
+            given(orderService.submitOrder(anyString(), any()))
+                    .willReturn(new SubmitOrderResponse(ORDER_ID, OrderStatus.NEW));
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(validLimitOrder()))
                     .andExpect(status().isAccepted())
@@ -58,13 +63,15 @@ class OrderControllerTest {
 
         @Test
         void aValidMarketOrderIsAccepted() throws Exception {
-            given(orderService.submitOrder(any())).willReturn(new SubmitOrderResponse(ORDER_ID, OrderStatus.NEW));
+            given(orderService.submitOrder(anyString(), any()))
+                    .willReturn(new SubmitOrderResponse(ORDER_ID, OrderStatus.NEW));
 
             String body = """
                     {"clientId":"client-1","symbol":"AAPL","side":"BUY","type":"MARKET","quantity":100}
                     """;
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isAccepted());
@@ -81,6 +88,7 @@ class OrderControllerTest {
                     """;
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest())
@@ -98,6 +106,7 @@ class OrderControllerTest {
                     """;
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest())
@@ -111,6 +120,7 @@ class OrderControllerTest {
                     """;
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest());
@@ -125,11 +135,43 @@ class OrderControllerTest {
                     """;
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest());
 
             verifyNoInteractions(orderService);
+        }
+    }
+
+    @Nested
+    class IdempotencyKey {
+
+        @Test
+        void aMissingKeyIsRejected() throws Exception {
+            mockMvc.perform(post("/orders")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(validLimitOrder()))
+                    .andExpect(status().isBadRequest());
+
+            verifyNoInteractions(orderService);
+        }
+
+        @Test
+        void theKeyIsPassedToTheService() throws Exception {
+            // given
+            given(orderService.submitOrder(anyString(), any()))
+                    .willReturn(new SubmitOrderResponse(ORDER_ID, OrderStatus.NEW));
+
+            // when
+            mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "key-abc")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(validLimitOrder()))
+                    .andExpect(status().isAccepted());
+
+            // then
+            verify(orderService).submitOrder(eq("key-abc"), any(SubmitOrderRequest.class));
         }
     }
 
@@ -143,6 +185,7 @@ class OrderControllerTest {
                     """;
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest())
@@ -156,6 +199,7 @@ class OrderControllerTest {
         @Test
         void brokenJsonIsRejected() throws Exception {
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{not json"))
                     .andExpect(status().isBadRequest())
@@ -168,7 +212,7 @@ class OrderControllerTest {
 
         @Test
         void aPriceOffTheTickIsRejected() throws Exception {
-            given(orderService.submitOrder(any(SubmitOrderRequest.class)))
+            given(orderService.submitOrder(anyString(), any(SubmitOrderRequest.class)))
                     .willThrow(new InvalidPriceException("price 1.523 is not a whole number of ticks of 0.01", null));
 
             String body = """
@@ -176,6 +220,7 @@ class OrderControllerTest {
                     """;
 
             mockMvc.perform(post("/orders")
+                            .header("Idempotency-Key", "test-key")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(body))
                     .andExpect(status().isBadRequest())
