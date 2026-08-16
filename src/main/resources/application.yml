@@ -16,6 +16,36 @@ spring:
     compose:
       enabled: false
 
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      # acks=all plus idempotence: no acknowledged write is lost to a broker failure, and
+      # retries cannot duplicate or reorder. max.in.flight up to 5 stays safe under idempotence.
+      acks: all
+      properties:
+        enable.idempotence: true
+        spring.json.add.type.headers: false
+
+    consumer:
+      group-id: matchbook-matching
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      properties:
+        # Trust our own event types, and take the concrete type from the payload's own
+        # eventType discriminator rather than a Kafka header written by the producer.
+        spring.json.trusted.packages: com.monty.matchbook.event
+        spring.json.use.type.headers: false
+
+    listener:
+      # One thread per partition, up to this many. Each thread owns whole partitions, so each
+      # symbol's book is only ever touched by one of them.
+      concurrency: 12
+      ack-mode: record
+
 logging:
   level:
     com.monty.matchbook: DEBUG
