@@ -28,7 +28,6 @@ public final class MatchingEngine {
         return orderBook == null ? new BookDepth(List.of(), List.of()) : orderBook.depth();
     }
 
-    /** Number of symbols with a live book. Reads must never grow this. */
     public int bookCount() {
         return books.size();
     }
