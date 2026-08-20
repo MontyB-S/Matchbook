@@ -3,6 +3,8 @@ package com.monty.matchbook.gateway;
 import com.monty.matchbook.engine.book.CancelResult;
 import com.monty.matchbook.engine.model.OrderStatus;
 import com.monty.matchbook.engine.model.OrderType;
+import com.monty.matchbook.event.OrderAccepted;
+import com.monty.matchbook.event.OrderCancelled;
 import com.monty.matchbook.gateway.api.OrderNotFoundException;
 import com.monty.matchbook.gateway.api.PriceConverter;
 import com.monty.matchbook.gateway.api.dto.CancelOrderResponse;
@@ -12,6 +14,7 @@ import com.monty.matchbook.gateway.api.dto.SubmitOrderResponse;
 import com.monty.matchbook.gateway.domain.OrderEntity;
 import com.monty.matchbook.gateway.domain.OrderRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -22,12 +25,25 @@ public class OrderService {
 
     private final PriceConverter priceConverter;
     private final OrderRepository orderRepository;
+    private final OrderCommandPublisher publisher;
+    private final Clock clock;
 
-    public OrderService(PriceConverter priceConverter, OrderRepository orderRepository) {
+    public OrderService(
+            PriceConverter priceConverter,
+            OrderRepository orderRepository,
+            OrderCommandPublisher publisher,
+            Clock clock) {
         this.priceConverter = priceConverter;
         this.orderRepository = orderRepository;
+        this.publisher = publisher;
+        this.clock = clock;
     }
 
+    /**
+     * Publishing happens only on the insert path. The two idempotency paths return an order that
+     * was already published, and republishing would submit it to the book a second time.
+     *
+     */
     public SubmitOrderResponse submitOrder(String idempotencyKey, SubmitOrderRequest request) {
         Optional<OrderEntity> existing = orderRepository.findByIdempotencyKey(idempotencyKey);
 
@@ -36,7 +52,9 @@ public class OrderService {
         }
 
         try {
-            return toSubmitResponse(orderRepository.saveAndFlush(newOrder(idempotencyKey, request)));
+            OrderEntity saved = orderRepository.saveAndFlush(newOrder(idempotencyKey, request));
+            publisher.publish(toAcceptedEvent(saved));
+            return toSubmitResponse(saved);
         } catch (DataIntegrityViolationException duplicateKey) {
 
             return orderRepository
@@ -57,7 +75,22 @@ public class OrderService {
         entity.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(entity);
 
+        publisher.publish(new OrderCancelled(UUID.randomUUID(), clock.instant(), orderId, entity.getSymbol()));
+
         return new CancelOrderResponse(orderId, CancelResult.CANCELLED);
+    }
+
+    private OrderAccepted toAcceptedEvent(OrderEntity order) {
+        return new OrderAccepted(
+                UUID.randomUUID(),
+                clock.instant(),
+                order.getId(),
+                order.getClientId(),
+                order.getSymbol(),
+                order.getSide(),
+                order.getType(),
+                order.getPriceTicks(),
+                order.getQuantity());
     }
 
     public OrderResponse get(UUID orderId) {
