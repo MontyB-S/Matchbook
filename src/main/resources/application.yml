@@ -32,10 +32,16 @@ spring:
       group-id: matchbook-matching
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      # Wrapped so an unparseable message becomes a null payload the error handler can skip,
+      # rather than a SerializationException that stalls the whole partition.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
         spring.json.trusted.packages: com.monty.matchbook.event
+        # Deserialize into the sealed base type and let the payload's own eventType
+        # discriminator choose the concrete class, rather than trusting a producer header.
         spring.json.use.type.headers: false
+        spring.json.value.default.type: com.monty.matchbook.event.OrderCommand
 
     listener:
       concurrency: 12

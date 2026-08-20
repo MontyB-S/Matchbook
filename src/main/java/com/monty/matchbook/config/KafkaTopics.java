@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.config.TopicBuilder;
 
 @Configuration
-class KafkaTopics {
+public class KafkaTopics {
 
     /**
      * Submits and cancels share one topic. Kafka only orders messages within a partition of a
