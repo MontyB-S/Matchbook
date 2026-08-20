@@ -39,8 +39,6 @@ class OrderCommandListener {
                 record.offset(),
                 Thread.currentThread().getName());
 
-        // No default branch: OrderCommand is sealed, so a new command type will not compile
-        // until it is handled here.
         switch (record.value()) {
             case OrderAccepted accepted -> match(accepted);
             case OrderCancelled cancelled -> engine.cancel(cancelled.symbol(), cancelled.orderId());
@@ -56,11 +54,6 @@ class OrderCommandListener {
         }
     }
 
-    /**
-     * The engine works in monotonic nanos and has no concept of an absolute time; the event carries
-     * an Instant it cannot use. Nothing reads timestampNanos — time priority comes from queue
-     * insertion order — so stamping it on arrival is honest.
-     */
     private static Order toOrder(OrderAccepted accepted) {
         return new Order(
                 accepted.orderId(),
