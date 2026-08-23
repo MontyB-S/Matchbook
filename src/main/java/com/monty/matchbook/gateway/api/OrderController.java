@@ -2,12 +2,14 @@ package com.monty.matchbook.gateway.api;
 
 import com.monty.matchbook.gateway.OrderService;
 import com.monty.matchbook.gateway.api.dto.CancelOrderResponse;
+import com.monty.matchbook.gateway.api.dto.CancelOutcome;
 import com.monty.matchbook.gateway.api.dto.OrderResponse;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderRequest;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderResponse;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -28,8 +30,12 @@ class OrderController {
     }
 
     @DeleteMapping("/{orderId}")
-    CancelOrderResponse cancel(@PathVariable UUID orderId) {
-        return orderService.cancelOrder(orderId);
+    ResponseEntity<CancelOrderResponse> cancel(@PathVariable UUID orderId) {
+        CancelOrderResponse response = orderService.cancelOrder(orderId);
+
+        HttpStatus status = response.outcome() == CancelOutcome.REQUESTED ? HttpStatus.ACCEPTED : HttpStatus.OK;
+
+        return ResponseEntity.status(status).body(response);
     }
 
     @GetMapping("/{orderId}")

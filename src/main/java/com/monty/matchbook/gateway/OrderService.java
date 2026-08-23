@@ -1,6 +1,5 @@
 package com.monty.matchbook.gateway;
 
-import com.monty.matchbook.engine.book.CancelResult;
 import com.monty.matchbook.engine.model.OrderStatus;
 import com.monty.matchbook.engine.model.OrderType;
 import com.monty.matchbook.event.OrderAccepted;
@@ -8,6 +7,7 @@ import com.monty.matchbook.event.OrderCancelled;
 import com.monty.matchbook.gateway.api.OrderNotFoundException;
 import com.monty.matchbook.gateway.api.PriceConverter;
 import com.monty.matchbook.gateway.api.dto.CancelOrderResponse;
+import com.monty.matchbook.gateway.api.dto.CancelOutcome;
 import com.monty.matchbook.gateway.api.dto.OrderResponse;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderRequest;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderResponse;
@@ -65,19 +65,22 @@ public class OrderService {
     }
 
     public CancelOrderResponse cancelOrder(UUID orderId) {
-        Optional<OrderEntity> order = orderRepository.findById(orderId);
+        OrderEntity order = orderRepository.findById(orderId).orElseThrow(() -> new OrderNotFoundException(orderId));
 
-        if (order.isEmpty()) {
-            return new CancelOrderResponse(orderId, CancelResult.NOT_FOUND);
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            return new CancelOrderResponse(orderId, CancelOutcome.ALREADY_CANCELLED);
         }
 
-        OrderEntity entity = order.get();
-        entity.setStatus(OrderStatus.CANCELLED);
-        orderRepository.save(entity);
+        if (order.getStatus().isFinished()) {
+            return new CancelOrderResponse(orderId, CancelOutcome.TOO_LATE);
+        }
 
-        publisher.publish(new OrderCancelled(UUID.randomUUID(), clock.instant(), orderId, entity.getSymbol()));
+        order.setStatus(OrderStatus.CANCELLED);
+        orderRepository.save(order);
 
-        return new CancelOrderResponse(orderId, CancelResult.CANCELLED);
+        publisher.publish(new OrderCancelled(UUID.randomUUID(), clock.instant(), orderId, order.getSymbol()));
+
+        return new CancelOrderResponse(orderId, CancelOutcome.REQUESTED);
     }
 
     private OrderAccepted toAcceptedEvent(OrderEntity order) {

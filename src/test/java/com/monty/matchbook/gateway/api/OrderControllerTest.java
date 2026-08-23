@@ -13,12 +13,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.monty.matchbook.engine.book.CancelResult;
 import com.monty.matchbook.engine.model.OrderStatus;
 import com.monty.matchbook.engine.model.OrderType;
 import com.monty.matchbook.engine.model.Side;
 import com.monty.matchbook.gateway.OrderService;
 import com.monty.matchbook.gateway.api.dto.CancelOrderResponse;
+import com.monty.matchbook.gateway.api.dto.CancelOutcome;
 import com.monty.matchbook.gateway.api.dto.OrderResponse;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderRequest;
 import com.monty.matchbook.gateway.api.dto.SubmitOrderResponse;
@@ -272,23 +272,40 @@ class OrderControllerTest {
     class Cancelling {
 
         @Test
-        void cancellingAKnownOrderReturnsCancelled() throws Exception {
+        void aCancelThatReachesTheBookIsAccepted() throws Exception {
             given(orderService.cancelOrder(ORDER_ID))
-                    .willReturn(new CancelOrderResponse(ORDER_ID, CancelResult.CANCELLED));
+                    .willReturn(new CancelOrderResponse(ORDER_ID, CancelOutcome.REQUESTED));
 
             mockMvc.perform(delete("/orders/{id}", ORDER_ID))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result").value("CANCELLED"));
+                    .andExpect(status().isAccepted())
+                    .andExpect(jsonPath("$.outcome").value("REQUESTED"));
         }
 
         @Test
-        void cancellingAnUnknownOrderIsNotAnError() throws Exception {
+        void cancellingTwiceIsNotAnError() throws Exception {
             given(orderService.cancelOrder(ORDER_ID))
-                    .willReturn(new CancelOrderResponse(ORDER_ID, CancelResult.NOT_FOUND));
+                    .willReturn(new CancelOrderResponse(ORDER_ID, CancelOutcome.ALREADY_CANCELLED));
 
             mockMvc.perform(delete("/orders/{id}", ORDER_ID))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.result").value("NOT_FOUND"));
+                    .andExpect(jsonPath("$.outcome").value("ALREADY_CANCELLED"));
+        }
+
+        @Test
+        void cancellingAFilledOrderIsTooLate() throws Exception {
+            given(orderService.cancelOrder(ORDER_ID))
+                    .willReturn(new CancelOrderResponse(ORDER_ID, CancelOutcome.TOO_LATE));
+
+            mockMvc.perform(delete("/orders/{id}", ORDER_ID))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.outcome").value("TOO_LATE"));
+        }
+
+        @Test
+        void cancellingAnUnknownOrderIsNotFound() throws Exception {
+            given(orderService.cancelOrder(ORDER_ID)).willThrow(new OrderNotFoundException(ORDER_ID));
+
+            mockMvc.perform(delete("/orders/{id}", ORDER_ID)).andExpect(status().isNotFound());
         }
     }
 
