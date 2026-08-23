@@ -98,7 +98,7 @@ class OrderFlowEndToEndTest extends AbstractKafkaIntegrationTest {
         // when
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete(
                         "/orders/{id}", orderId))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted());
 
         // then
         await().atMost(Duration.ofSeconds(20))
