@@ -14,6 +14,8 @@ public sealed interface OrderCommand permits OrderAccepted, OrderCancelled {
 
     UUID eventId();
 
+    UUID orderId();
+
     String symbol();
 
     Instant occurredAt();
