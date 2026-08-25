@@ -25,25 +25,17 @@ public class OrderService {
 
     private final PriceConverter priceConverter;
     private final OrderRepository orderRepository;
-    private final OrderCommandPublisher publisher;
+    private final OrderWriter writer;
     private final Clock clock;
 
     public OrderService(
-            PriceConverter priceConverter,
-            OrderRepository orderRepository,
-            OrderCommandPublisher publisher,
-            Clock clock) {
+            PriceConverter priceConverter, OrderRepository orderRepository, OrderWriter writer, Clock clock) {
         this.priceConverter = priceConverter;
         this.orderRepository = orderRepository;
-        this.publisher = publisher;
+        this.writer = writer;
         this.clock = clock;
     }
 
-    /**
-     * Publishing happens only on the insert path. The two idempotency paths return an order that
-     * was already published, and republishing would submit it to the book a second time.
-     *
-     */
     public SubmitOrderResponse submitOrder(String idempotencyKey, SubmitOrderRequest request) {
         Optional<OrderEntity> existing = orderRepository.findByIdempotencyKey(idempotencyKey);
 
@@ -51,10 +43,10 @@ public class OrderService {
             return toSubmitResponse(existing.get());
         }
 
+        OrderEntity order = newOrder(idempotencyKey, request);
+
         try {
-            OrderEntity saved = orderRepository.saveAndFlush(newOrder(idempotencyKey, request));
-            publisher.publish(toAcceptedEvent(saved));
-            return toSubmitResponse(saved);
+            return toSubmitResponse(writer.insert(order, toAcceptedEvent(order)));
         } catch (DataIntegrityViolationException duplicateKey) {
 
             return orderRepository
@@ -76,9 +68,8 @@ public class OrderService {
         }
 
         order.setStatus(OrderStatus.CANCELLED);
-        orderRepository.save(order);
 
-        publisher.publish(new OrderCancelled(UUID.randomUUID(), clock.instant(), orderId, order.getSymbol()));
+        writer.update(order, new OrderCancelled(UUID.randomUUID(), clock.instant(), orderId, order.getSymbol()));
 
         return new CancelOrderResponse(orderId, CancelOutcome.REQUESTED);
     }

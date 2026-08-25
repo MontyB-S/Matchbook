@@ -53,3 +53,6 @@ logging:
 
 matchbook:
   tick-size: 0.01
+  outbox:
+    poll-interval-ms: 200
+    batch-size: 100
