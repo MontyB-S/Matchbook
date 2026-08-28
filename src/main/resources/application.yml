@@ -53,6 +53,8 @@ logging:
 
 matchbook:
   tick-size: 0.01
+  matching:
+    dedup-capacity: 100000
   outbox:
     poll-interval-ms: 200
     batch-size: 100
