@@ -7,6 +7,7 @@ import com.monty.matchbook.engine.model.Order;
 import com.monty.matchbook.engine.model.Trade;
 import com.monty.matchbook.event.OrderAccepted;
 import com.monty.matchbook.event.OrderCancelled;
+import com.monty.matchbook.event.OrderCommand;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,10 +25,12 @@ class OrderCommandListener {
 
     private final MatchingEngine engine;
     private final TradePublisher tradePublisher;
+    private final ProcessedEvents processed;
 
-    OrderCommandListener(MatchingEngine engine, TradePublisher tradePublisher) {
+    OrderCommandListener(MatchingEngine engine, TradePublisher tradePublisher, ProcessedEvents processed) {
         this.engine = engine;
         this.tradePublisher = tradePublisher;
+        this.processed = processed;
     }
 
     @KafkaListener(topics = KafkaTopics.ORDER_COMMANDS)
@@ -39,10 +42,19 @@ class OrderCommandListener {
                 record.offset(),
                 Thread.currentThread().getName());
 
-        switch (record.value()) {
+        if (!(record.value() instanceof OrderCommand command)) {
+            log.warn("ignoring unrecognised command on {}", KafkaTopics.ORDER_COMMANDS);
+            return;
+        }
+
+        if (!processed.isNew(command.eventId())) {
+            log.debug("skipping duplicate event {} for symbol {}", command.eventId(), command.symbol());
+            return;
+        }
+
+        switch (command) {
             case OrderAccepted accepted -> match(accepted);
             case OrderCancelled cancelled -> engine.cancel(cancelled.symbol(), cancelled.orderId());
-            default -> log.warn("ignoring unrecognised command on {}", KafkaTopics.ORDER_COMMANDS);
         }
     }
 
